@@ -32,7 +32,10 @@ jobs:
 
       - name: Download Go dependencies
         run: |
-          # Conserta o erro de versão inválida buscando a mais recente
+          # Arranca a versão corrompida do arquivo ANTES do Go tentar ler
+          go mod edit -droprequire golang.org/x/mobile
+          
+          # Agora sim, busca a versão mais recente e correta do zero
           go get golang.org/x/mobile@latest
           go mod tidy
           
