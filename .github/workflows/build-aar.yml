@@ -16,7 +16,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.19' # Versão estável disponível no GitHub Actions
+          go-version: '1.23' # Versão compatível com golang.org/x/mobile
 
       - name: Setup Java
         uses: actions/setup-java@v4
