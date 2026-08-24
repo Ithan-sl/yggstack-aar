@@ -16,10 +16,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26' # Atualizado para a versão que o mobile exige
+          go-version: '1.26'
 
       - name: Setup Java
-        uses: actions/setup-java@v5 # Atualizado para v5 (reparei que a v4 deu um aviso de descontinuada)
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -38,7 +38,7 @@ jobs:
           # Busca a versão mais recente e correta
           go get golang.org/x/mobile@latest
           
-          # Declara explicitamente a ferramenta de bind conforme exigido no Go 1.26+
+          # Declara explicitamente a ferramenta de bind
           go get -tool golang.org/x/mobile/cmd/gobind
           
           go mod tidy
@@ -62,9 +62,8 @@ jobs:
         run: |
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
           
-          # O comando 'gomobile bind' cria o .aar
-          # Ele precisa apontar para o pacote Go que contém as funções exportáveis (ex: cmd/yggstack)
-          gomobile bind -target=android -o yggstack.aar ./cmd/yggstack
+          # Adicionamos -androidapi 21 aqui para resolver o erro da versão do Android!
+          gomobile bind -target=android -androidapi 21 -o yggstack.aar ./cmd/yggstack
 
       - name: Upload AAR Artifact
         uses: actions/upload-artifact@v4
