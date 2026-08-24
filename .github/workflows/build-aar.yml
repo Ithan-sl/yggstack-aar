@@ -16,7 +16,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # O Yggstack requer Go 1.22+
+          go-version: '1.19' # Versão estável disponível no GitHub Actions
 
       - name: Setup Java
         uses: actions/setup-java@v4
