@@ -1,3 +1,5 @@
-module github.com/r-a-u-l/yggstack
+module github.com/Ithan-sl/yggstack-aar
 
-go 1.19
+go 1.23
+
+// +tool golang.org/x/mobile/cmd/gobind
