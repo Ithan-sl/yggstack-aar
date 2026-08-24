@@ -32,6 +32,10 @@ jobs:
 
       - name: Download Go dependencies
         run: |
+          # Conserta o erro de versão inválida buscando a mais recente
+          go get golang.org/x/mobile@latest
+          go mod tidy
+          
           # Baixa as dependências do módulo Go
           go mod download
 
