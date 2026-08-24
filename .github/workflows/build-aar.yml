@@ -1,0 +1,65 @@
+name: Build Yggstack AAR
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Permite rodar manualmente
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout local repo
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # O Yggstack requer Go 1.22+
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager "ndk;25.2.9519653"
+
+      - name: Clone Yggstack Repo
+        run: |
+          git clone https://github.com/r-a-u-l/yggstack.git
+          cd yggstack
+          # Baixa as dependências do módulo Go
+          go mod download
+
+      - name: Install Gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          
+          # Garante que as ferramentas do Go estejam no PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$(go env GOPATH)/bin
+          
+          # Inicializa o Gomobile
+          gomobile init
+
+      - name: Build AAR
+        run: |
+          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+          cd yggstack
+          
+          # O comando 'gomobile bind' cria o .aar
+          # Ele precisa apontar para o pacote Go que contém as funções exportáveis (ex: cmd/yggstack)
+          gomobile bind -target=android -o yggstack.aar ./cmd/yggstack
+
+      - name: Upload AAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yggstack-android
+          path: yggstack/yggstack.aar
