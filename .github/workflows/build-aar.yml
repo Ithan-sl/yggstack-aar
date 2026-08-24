@@ -16,10 +16,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # Versão compatível com golang.org/x/mobile
+          go-version: '1.26' # Atualizado para a versão que o mobile exige
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5 # Atualizado para v5 (reparei que a v4 deu um aviso de descontinuada)
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -35,8 +35,12 @@ jobs:
           # Arranca a versão corrompida do arquivo ANTES do Go tentar ler
           go mod edit -droprequire golang.org/x/mobile
           
-          # Agora sim, busca a versão mais recente e correta do zero
+          # Busca a versão mais recente e correta
           go get golang.org/x/mobile@latest
+          
+          # Declara explicitamente a ferramenta de bind conforme exigido no Go 1.26+
+          go get -tool golang.org/x/mobile/cmd/gobind
+          
           go mod tidy
           
           # Baixa as dependências do módulo Go
