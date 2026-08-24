@@ -30,10 +30,8 @@ jobs:
       - name: Install Android NDK
         run: sdkmanager "ndk;25.2.9519653"
 
-      - name: Clone Yggstack Repo
+      - name: Download Go dependencies
         run: |
-          git clone https://github.com/r-a-u-l/yggstack.git
-          cd yggstack
           # Baixa as dependências do módulo Go
           go mod download
 
@@ -52,7 +50,6 @@ jobs:
       - name: Build AAR
         run: |
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
-          cd yggstack
           
           # O comando 'gomobile bind' cria o .aar
           # Ele precisa apontar para o pacote Go que contém as funções exportáveis (ex: cmd/yggstack)
@@ -62,4 +59,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: yggstack-android
-          path: yggstack/yggstack.aar
+          path: yggstack.aar
