@@ -24,8 +24,8 @@ var client *gotgproto.Client
 func main() {
 	log.Println("Iniciando o Motor de Streaming em Go...")
 
-	// 1. Inicia o Cliente do Telegram e gerencia a sessão
 	var err error
+	// Inicia o Cliente e cria a sessão SQLite para não precisar logar de novo
 	client, err = gotgproto.NewClient(
 		apiID,
 		apiHash,
@@ -41,18 +41,15 @@ func main() {
 
 	log.Println("[+] Servidor Go Conectado ao Telegram!")
 
-	// 2. Configura as rotas HTTP
 	http.HandleFunc("/stream/", streamHandler)
-
-	// 3. Inicia o Servidor na porta 8000
 	log.Println("[+] Uvicorn aposentado! Servidor Go escutando na porta 8000")
+	
 	if err := http.ListenAndServe("0.0.0.0:8000", nil); err != nil {
 		log.Fatalf("Erro no servidor HTTP: %v", err)
 	}
 }
 
 func streamHandler(w http.ResponseWriter, r *http.Request) {
-	// CORS para o Player Vidstack
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Range")
@@ -69,34 +66,54 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	channelIDStr, messageIDStr := parts[1], parts[2]
+	
 	channelID, _ := strconv.ParseInt(channelIDStr, 10, 64)
-	msgID, _ := strconv.Atoi(messageIDStr)
-
-	// Contexto base
-	ctx := context.Background()
-
-	// Resolve o peer (Canal)
-	peer, err := client.Context().Resolve(ctx, channelIDStr)
-	if err != nil {
-		// Fallback para ID numérico se a string falhar
-		peer = &tg.InputPeerChannel{ChannelID: channelID} 
+	if channelID < -1000000000000 {
+		channelID = (channelID * -1) - 1000000000000
+	} else if channelID < 0 {
+		channelID = channelID * -1
 	}
 
-	// Busca a mensagem
+	msgID, _ := strconv.Atoi(messageIDStr)
+	ctx := context.Background()
+
+	peer := &tg.InputChannel{
+		ChannelID:  channelID,
+		AccessHash: 0,
+	}
+
 	messagesClass, err := client.API().ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
-		Channel: peer.(*tg.InputPeerChannel),
+		Channel: peer,
 		ID:      []tg.InputMessageClass{&tg.InputMessageID{ID: msgID}},
 	})
 
 	if err != nil {
-		http.Error(w, "Erro ao buscar video no Telegram", http.StatusNotFound)
-		return
+		dialogs, errDialogs := client.API().MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+			OffsetPeer: &tg.InputPeerEmpty{},
+			Limit:      100,
+		})
+		
+		if errDialogs == nil {
+			if dlgs, ok := dialogs.(*tg.MessagesDialogsSlice); ok {
+				for _, chat := range dlgs.Chats {
+					if c, ok := chat.(*tg.Channel); ok && c.ID == channelID {
+						peer.AccessHash = c.AccessHash
+						break
+					}
+				}
+			}
+		}
+		
+		messagesClass, err = client.API().ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
+			Channel: peer,
+			ID:      []tg.InputMessageClass{&tg.InputMessageID{ID: msgID}},
+		})
+		if err != nil {
+			http.Error(w, "Erro ao buscar video no Telegram", http.StatusNotFound)
+			return
+		}
 	}
 
-	var fileLocation tg.InputFileLocationClass
-	var fileSize int64
-
-	// Extrai a mídia e o tamanho (simplificado para documentos/vídeos)
 	msgs, ok := messagesClass.(*tg.MessagesChannelMessages)
 	if !ok || len(msgs.Messages) == 0 {
 		http.Error(w, "Video nao encontrado", http.StatusNotFound)
@@ -111,18 +128,17 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 
 	doc, ok := msg.Media.(*tg.MessageMediaDocument).Document.(*tg.Document)
 	if !ok {
-		http.Error(w, "Midia nao e um documento de video", http.StatusNotFound)
+		http.Error(w, "Midia nao e um documento", http.StatusNotFound)
 		return
 	}
 
-	fileSize = doc.Size
-	fileLocation = &tg.InputDocumentFileLocation{
+	fileLocation := &tg.InputDocumentFileLocation{
 		ID:            doc.ID,
 		AccessHash:    doc.AccessHash,
 		FileReference: doc.FileReference,
 	}
 
-	// Calcula os Ranges solicitados pelo player HTML5
+	fileSize := doc.Size
 	start, end := int64(0), fileSize-1
 	rangeHeader := r.Header.Get("Range")
 	if rangeHeader != "" {
@@ -138,7 +154,6 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunkLength := (end - start) + 1
 
-	// Responde com os Headers corretos
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Content-Length", strconv.FormatInt(chunkLength, 10))
@@ -150,15 +165,13 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// PRE-FETCHING E STREAMING EXTREMAMENTE RÁPIDO (GOROUTINE + CHANNELS)
-	// Isso substitui a Fila do Python. É aqui que a mágica do Go acontece.
-	chunkChan := make(chan []byte, 20) // Guarda 20 pedaços na RAM
-	errChan := make(chan error, 1)
+	// CANAL GO: A Magica da Velocidade Extrema
+	chunkChan := make(chan []byte, 20)
 
 	go func() {
 		defer close(chunkChan)
 		offset := start
-		limit := int64(512 * 1024) // Puxa 512KB por vez direto do Telegram
+		limit := int64(512 * 1024)
 
 		for offset <= end {
 			reqSize := limit
@@ -174,7 +187,6 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 
 			res, err := client.API().UploadGetFile(ctx, req)
 			if err != nil {
-				errChan <- err
 				return
 			}
 
@@ -188,12 +200,13 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Joga os dados do Canal Go diretamente para a tela do usuário
 	for chunk := range chunkChan {
 		_, err := w.Write(chunk)
 		if err != nil {
-			break // Se o usuário fechar a aba, cancela a entrega suavemente
+			break
 		}
-		w.(http.Flusher).Flush() // Empurra os dados instantaneamente sem segurar na rede
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
 	}
 }
