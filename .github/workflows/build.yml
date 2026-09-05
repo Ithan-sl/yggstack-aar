@@ -7,11 +7,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.22'
       - run: |
+          rm -f go.mod go.sum
           go mod init gostreamer
-          go get github.com/celestix/gotgproto@latest
-          go get github.com/gotd/td@latest
+          
+          # O SEGREDO ESTÁ AQUI: Travando o "Par Perfeito" de versões!
+          go get github.com/gotd/td@v0.111.2
+          go get github.com/celestix/gotgproto@v1.0.0-beta22
+          
           go mod tidy
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o streamer_go
       - uses: actions/upload-artifact@v4
